@@ -84,12 +84,19 @@ export default function CrudApp() {
   }
 
   async function handleUpdate() {
-    setTxStatus("sending-update");
     try {
       if (!wallet || !program) throw new Error("Wallet/program not ready");
 
       const owner = walletOwnerPk(wallet);
       const [pda] = await pdaForTitle(program, owner, title);
+
+      const acct = await program.account.journalEntryState.fetchNullable(pda);
+      if (!acct) {
+        setTxStatus("No entry found for that title. Create it first.");
+        return;
+      }
+
+      setTxStatus("sending-update");
 
       await program.methods
         .updateJournalEntry(title, message)
@@ -108,12 +115,19 @@ export default function CrudApp() {
   }
 
   async function handleDelete() {
-    setTxStatus("sending-delete");
     try {
       if (!wallet || !program) throw new Error("Wallet/program not ready");
 
       const owner = walletOwnerPk(wallet);
       const [pda] = await pdaForTitle(program, owner, title);
+
+      const acct = await program.account.journalEntryState.fetchNullable(pda);
+      if (!acct) {
+        setTxStatus("No entry found for that title. Create it first.");
+        return;
+      }
+
+      setTxStatus("sending-delete");
 
       await program.methods
         .deleteJournalEntry(title)
@@ -124,6 +138,8 @@ export default function CrudApp() {
         })
         .rpc();
 
+      setTitle("");
+      setMessage("");
       setTxStatus("delete-success");
     } catch (err: any) {
       console.error("delete error", err);
