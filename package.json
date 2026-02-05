@@ -1,5 +1,6 @@
 {
   "name": "crud",
+  "type": "module",
   "scripts": {
     "build": "next build",
     "ci": "npm run build && npm run lint && npm run format:check",
@@ -36,15 +37,20 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@types/chai": "^5.2.3",
     "@types/jest": "^30.0.0",
-    "@types/node": "^20.19.30",
+    "@types/mocha": "^10.0.10",
+    "@types/node": "^20.19.31",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "baseline-browser-mapping": "^2.9.19",
+    "chai": "^6.2.2",
     "eslint": "^9",
     "eslint-config-next": "16.0.10",
+    "mocha": "^11.3.0",
     "prettier": "^3.6.2",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
   }
 }

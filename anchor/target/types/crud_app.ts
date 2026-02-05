@@ -43,6 +43,28 @@ export type CrudApp = {
           }
         },
         {
+          "name": "index",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  105,
+                  110,
+                  100,
+                  101,
+                  120
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "owner"
+              }
+            ]
+          }
+        },
+        {
           "name": "owner",
           "writable": true,
           "signer": true
@@ -93,9 +115,34 @@ export type CrudApp = {
           }
         },
         {
+          "name": "index",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  105,
+                  110,
+                  100,
+                  101,
+                  120
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "owner"
+              }
+            ]
+          }
+        },
+        {
           "name": "owner",
           "writable": true,
-          "signer": true
+          "signer": true,
+          "relations": [
+            "journalEntry"
+          ]
         },
         {
           "name": "systemProgram",
@@ -140,12 +187,10 @@ export type CrudApp = {
         },
         {
           "name": "owner",
-          "writable": true,
-          "signer": true
-        },
-        {
-          "name": "systemProgram",
-          "address": "11111111111111111111111111111111"
+          "signer": true,
+          "relations": [
+            "journalEntry"
+          ]
         }
       ],
       "args": [
@@ -173,6 +218,31 @@ export type CrudApp = {
         58,
         66
       ]
+    },
+    {
+      "name": "journalIndex",
+      "discriminator": [
+        117,
+        187,
+        241,
+        70,
+        33,
+        85,
+        137,
+        234
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "invalidOwner",
+      "msg": "Index owner mismatch"
+    },
+    {
+      "code": 6001,
+      "name": "indexFull",
+      "msg": "Journal index is full (max 200)"
     }
   ],
   "types": [
@@ -192,6 +262,24 @@ export type CrudApp = {
           {
             "name": "message",
             "type": "string"
+          }
+        ]
+      }
+    },
+    {
+      "name": "journalIndex",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "entries",
+            "type": {
+              "vec": "pubkey"
+            }
           }
         ]
       }

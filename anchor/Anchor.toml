@@ -16,4 +16,5 @@ cluster = "Devnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]
-test = "../node_modules/.bin/jest --preset ts-jest"
+test = "npx mocha -t 1000000 -r ts-node/register tests/**/*.ts"
+

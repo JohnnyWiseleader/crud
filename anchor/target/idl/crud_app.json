@@ -37,6 +37,28 @@
           }
         },
         {
+          "name": "index",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  105,
+                  110,
+                  100,
+                  101,
+                  120
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "owner"
+              }
+            ]
+          }
+        },
+        {
           "name": "owner",
           "writable": true,
           "signer": true
@@ -87,9 +109,34 @@
           }
         },
         {
+          "name": "index",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  105,
+                  110,
+                  100,
+                  101,
+                  120
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "owner"
+              }
+            ]
+          }
+        },
+        {
           "name": "owner",
           "writable": true,
-          "signer": true
+          "signer": true,
+          "relations": [
+            "journal_entry"
+          ]
         },
         {
           "name": "system_program",
@@ -134,12 +181,10 @@
         },
         {
           "name": "owner",
-          "writable": true,
-          "signer": true
-        },
-        {
-          "name": "system_program",
-          "address": "11111111111111111111111111111111"
+          "signer": true,
+          "relations": [
+            "journal_entry"
+          ]
         }
       ],
       "args": [
@@ -167,6 +212,31 @@
         58,
         66
       ]
+    },
+    {
+      "name": "JournalIndex",
+      "discriminator": [
+        117,
+        187,
+        241,
+        70,
+        33,
+        85,
+        137,
+        234
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "InvalidOwner",
+      "msg": "Index owner mismatch"
+    },
+    {
+      "code": 6001,
+      "name": "IndexFull",
+      "msg": "Journal index is full (max 200)"
     }
   ],
   "types": [
@@ -186,6 +256,24 @@
           {
             "name": "message",
             "type": "string"
+          }
+        ]
+      }
+    },
+    {
+      "name": "JournalIndex",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "entries",
+            "type": {
+              "vec": "pubkey"
+            }
           }
         ]
       }
