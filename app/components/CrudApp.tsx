@@ -5,6 +5,17 @@ import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { PublicKey, SystemProgram } from "@solana/web3.js";
 import { createCrudProgram } from "../lib/crudClient";
 
+function isUserRejected(err: any) {
+  const msg = (err?.message ?? String(err)).toLowerCase();
+  return (
+    err?.name?.toLowerCase().includes("walletsigntransactionerror") ||
+    msg.includes("user rejected") ||
+    msg.includes("rejected the request") ||
+    msg.includes("denied") ||
+    err?.code === 4001
+  );
+}
+
 function indexPda(programId: PublicKey, owner: PublicKey): PublicKey {
   const [pda] = PublicKey.findProgramAddressSync(
     [Buffer.from("index"), owner.toBuffer()],
@@ -141,7 +152,12 @@ export default function CrudApp() {
       setTxStatus("create-success");
       await refresh();
       setSelectedPdaStr(pda.toBase58());
+
     } catch (err: any) {
+      if (isUserRejected(err)) {
+        setTxStatus("cancelled");  // <-- graceful
+        return;
+      }
       console.error(err);
       setTxStatus("create-failed: " + (err?.message ?? String(err)));
     }
@@ -167,6 +183,10 @@ export default function CrudApp() {
       await refresh();
       setSelectedPdaStr(pda.toBase58());
     } catch (err: any) {
+      if (isUserRejected(err)) {
+        setTxStatus("cancelled");  // <-- graceful
+        return;
+      }
       console.error(err);
       setTxStatus("update-failed: " + (err?.message ?? String(err)));
     }
@@ -193,6 +213,10 @@ export default function CrudApp() {
       setTxStatus("delete-success");
       await refresh();
     } catch (err: any) {
+      if (isUserRejected(err)) {
+        setTxStatus("cancelled");  // <-- graceful
+        return;
+      }
       console.error(err);
       setTxStatus("delete-failed: " + (err?.message ?? String(err)));
     }

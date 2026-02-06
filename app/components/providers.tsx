@@ -6,6 +6,7 @@ import { WalletModalProvider } from "@solana/wallet-adapter-react-ui";
 import { PhantomWalletAdapter } from "@solana/wallet-adapter-wallets";
 
 import "@solana/wallet-adapter-react-ui/styles.css";
+import { DevWalletResetter } from "./DevWalletResetter";
 
 export function Providers({ children }: PropsWithChildren) {
   const endpoint =
@@ -15,8 +16,9 @@ export function Providers({ children }: PropsWithChildren) {
 
   return (
     <ConnectionProvider endpoint={endpoint}>
-      <WalletProvider wallets={wallets} autoConnect>
+      <WalletProvider wallets={wallets} autoConnect={false}>
         <WalletModalProvider>{children}</WalletModalProvider>
+        <DevWalletResetter />
       </WalletProvider>
     </ConnectionProvider>
   );
