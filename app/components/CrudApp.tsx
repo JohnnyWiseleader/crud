@@ -1,9 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { PublicKey, SystemProgram } from "@solana/web3.js";
 import { createCrudProgram } from "../lib/crudClient";
+import { createEntry, deleteEntryByKey, fetchEntries, listEntryKeys, updateEntryByKey } from "../lib/journalClient";
+import type { Program, Idl } from "@coral-xyz/anchor";
+import idl from "../idl/crud_app.json";
+
+type CrudAppIdl = typeof idl & Idl;
 
 function isUserRejected(err: any) {
   const msg = (err?.message ?? String(err)).toLowerCase();
@@ -16,54 +21,32 @@ function isUserRejected(err: any) {
   );
 }
 
-function indexPda(programId: PublicKey, owner: PublicKey): PublicKey {
-  const [pda] = PublicKey.findProgramAddressSync(
-    [Buffer.from("index"), owner.toBuffer()],
-    programId
-  );
-  return pda;
-}
-
-function entryPda(programId: PublicKey, owner: PublicKey, title: string): PublicKey {
-  const [pda] = PublicKey.findProgramAddressSync(
-    [Buffer.from(title), owner.toBuffer()],
-    programId
-  );
-  return pda;
-}
-
 type EntryRow = {
   pda: PublicKey;
+  id: bigint;
   title: string;
   message: string;
   owner: PublicKey;
 };
 
-async function loadEntries(program: any, owner: PublicKey): Promise<EntryRow[]> {
-  const indexAddr = indexPda(program.programId, owner);
+export async function loadEntries(
+  program: Program<CrudAppIdl>,
+  owner: PublicKey
+): Promise<EntryRow[]> {
+  const pubkeys = await listEntryKeys(program, owner);
+  if (pubkeys.length === 0) return [];
 
-  // index may not exist yet
-  const idx = await program.account.journalIndex.fetchNullable(indexAddr);
-  if (!idx) return [];
+  const pairs = await fetchEntries(program, pubkeys); // [{ pubkey, account }]
+  const rows: EntryRow[] = pairs.map(({ pubkey, account }: any) => ({
+    pda: pubkey,
+    id: BigInt(account.id.toString()), // <-- important
+    title: account.title,
+    message: account.message,
+    owner: account.owner,
+  }));
 
-  const pubkeys: PublicKey[] = idx.entries;
-  if (!pubkeys.length) return [];
-
-  const accounts = await program.account.journalEntryState.fetchMultiple(pubkeys);
-
-  // fetchMultiple returns (Account | null) aligned to input order
-  const rows: EntryRow[] = [];
-  for (let i = 0; i < pubkeys.length; i++) {
-    const a = accounts[i];
-    if (!a) continue;
-    rows.push({
-      pda: pubkeys[i],
-      title: a.title,
-      message: a.message,
-      owner: a.owner,
-    });
-  }
-  rows.sort((x, y) => x.title.localeCompare(y.title));
+  // Sort by ID asc (oldest first) flip the comparison for desc
+  rows.sort((a, b) => (a.id < b.id ? -1 : 1));
   return rows;
 }
 
@@ -73,6 +56,58 @@ export default function CrudApp() {
 
   const connected = wallet.connected && !!wallet.publicKey;
   const owner = wallet.publicKey ?? null;
+
+  // -----------------------------
+  // Wallet connect watchdog
+  // -----------------------------
+  const [connectTimeout, setConnectTimeout] = useState(false);
+  const timerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    // clear previous timer
+    if (timerRef.current) {
+      window.clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+
+    if (wallet.connecting) {
+      setConnectTimeout(false);
+
+      timerRef.current = window.setTimeout(async () => {
+        console.warn("[wallet] connect timed out; forcing disconnect/reset");
+        setConnectTimeout(true);
+
+        try {
+          await wallet.disconnect();
+        } catch { }
+
+        // Optional: clear remembered wallet so autoConnect doesn't instantly re-hang
+        try {
+          localStorage.removeItem("walletName");     // older wallet-adapter key
+          localStorage.removeItem("walletAdapter");  // some setups
+        } catch { }
+      }, 45_000);
+    }
+
+    // Clear banner once connected or idle
+    if (wallet.connected || (!wallet.connecting && !wallet.disconnecting)) {
+      setConnectTimeout(false);
+    }
+
+    return () => {
+      if (timerRef.current) window.clearTimeout(timerRef.current);
+    };
+  }, [wallet.connecting, wallet.connected, wallet.disconnecting, wallet]);
+
+  async function retryConnect() {
+    setConnectTimeout(false);
+    try {
+      await wallet.connect();
+    } catch (e) {
+      // user may reject again; treat as normal
+      console.warn("[wallet] retry connect failed", e);
+    }
+  }
 
   const program = useMemo(() => {
     if (!connected || !wallet.publicKey) return null;
@@ -86,6 +121,7 @@ export default function CrudApp() {
 
   const [entries, setEntries] = useState<EntryRow[]>([]);
   const [selectedPdaStr, setSelectedPdaStr] = useState<string>("");
+  const [selectedEntry, setSelectedEntry] = useState<EntryRow | null>(null);
   const [title, setTitle] = useState("");
   const [message, setMessage] = useState("");
   const [txStatus, setTxStatus] = useState<string>("idle");
@@ -134,31 +170,26 @@ export default function CrudApp() {
     setTxStatus("sending-create");
     try {
       if (!program || !owner) throw new Error("Wallet/program not ready");
-      if (!title.trim()) throw new Error("Title required");
+      if (!title) throw new Error("Title required");
 
-      // derive PDA exactly like on-chain seeds
-      const pda = entryPda(program.programId, owner, title);
+      const { sig, entryPda } = await createEntry(program, owner, title, message);
 
-      await program.methods
-        .createJournalEntry(title, message)
-        .accounts({
-          journalEntry: pda,
-          index: indexPda(program.programId, owner),
-          owner,
-          systemProgram: SystemProgram.programId,
-        })
-        .rpc();
+      console.log("create txSig: ", sig);
 
       setTxStatus("create-success");
       await refresh();
-      setSelectedPdaStr(pda.toBase58());
 
+      setSelectedPdaStr(entryPda.toBase58());
     } catch (err: any) {
       if (isUserRejected(err)) {
-        setTxStatus("cancelled");  // <-- graceful
+        setTxStatus("cancelled");
         return;
       }
+
       console.error(err);
+      if (typeof err?.getLogs === "function") {
+        console.log("on-chain logs:", await err.getLogs());
+      }
       setTxStatus("create-failed: " + (err?.message ?? String(err)));
     }
   }
@@ -167,24 +198,19 @@ export default function CrudApp() {
     setTxStatus("sending-update");
     try {
       if (!program || !owner) throw new Error("Wallet/program not ready");
-      if (!title.trim()) throw new Error("Title required");
+      if (!selectedEntry) throw new Error("No entry selected");
 
-      const pda = entryPda(program.programId, owner, title);
+      const pdaStr = selectedEntry.pda.toBase58();
 
-      await program.methods
-        .updateJournalEntry(title, message)
-        .accounts({
-          journalEntry: pda,
-          owner,
-        })
-        .rpc();
+      await updateEntryByKey(program, owner, selectedEntry.pda, message);
 
       setTxStatus("update-success");
       await refresh();
-      setSelectedPdaStr(pda.toBase58());
+
+      setSelectedPdaStr(pdaStr);
     } catch (err: any) {
       if (isUserRejected(err)) {
-        setTxStatus("cancelled");  // <-- graceful
+        setTxStatus("cancelled");
         return;
       }
       console.error(err);
@@ -192,38 +218,49 @@ export default function CrudApp() {
     }
   }
 
-  async function handleDelete() {
-    setTxStatus("sending-delete");
-    try {
-      if (!program || !owner) throw new Error("Wallet/program not ready");
-      if (!title.trim()) throw new Error("Title required");
+async function handleDelete() {
+  setTxStatus("sending-delete");
+  try {
+    if (!program || !owner) throw new Error("Wallet/program not ready");
+    if (!selectedEntry) throw new Error("No entry selected");
 
-      const pda = entryPda(program.programId, owner, title);
+    await deleteEntryByKey(program, owner, selectedEntry.pda);
 
-      await program.methods
-        .deleteJournalEntry(title)
-        .accounts({
-          journalEntry: pda,
-          index: indexPda(program.programId, owner),
-          owner,
-          systemProgram: SystemProgram.programId,
-        })
-        .rpc();
+    setTxStatus("delete-success");
+    await refresh();
 
-      setTxStatus("delete-success");
-      await refresh();
-    } catch (err: any) {
-      if (isUserRejected(err)) {
-        setTxStatus("cancelled");  // <-- graceful
-        return;
-      }
-      console.error(err);
-      setTxStatus("delete-failed: " + (err?.message ?? String(err)));
+    // clear selection since the entry is now closed
+    setSelectedEntry(null);
+    setSelectedPdaStr("");
+  } catch (err: any) {
+    if (isUserRejected(err)) {
+      setTxStatus("cancelled");
+      return;
     }
+    console.error(err);
+    setTxStatus("delete-failed: " + (err?.message ?? String(err)));
   }
+}
 
   return (
     <div className="space-y-4 rounded-lg border border-border-low bg-card p-4">
+      {connectTimeout && (
+        <div className="rounded border p-3 text-sm">
+          Wallet connection timed out.
+          <div className="mt-2 flex gap-2">
+            <button className="rounded border px-3 py-1" onClick={retryConnect}>
+              Retry
+            </button>
+            <button
+              className="rounded border px-3 py-1"
+              onClick={() => window.location.reload()}
+            >
+              Refresh page
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-semibold">Journal CRUD</h3>
         <div className="text-sm text-muted">Status: {txStatus}</div>

@@ -6,15 +6,14 @@ resolution = true
 skip-lint = false
 
 [programs.devnet]
-crud_app = "ADoEaEXd75hq2KxJWDKc4zpmujqYLqaGG3qThW3c6bS3"
+crud_app = "4NcUz8q7fAChF5RiAvcWQ6cFaZduXLQYiaVX2Fq4i2EC"
 
 [registry]
 url = "https://api.apr.dev"
 
 [provider]
-cluster = "Devnet"
+cluster = "devnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]
 test = "npx mocha -t 1000000 -r ts-node/register tests/**/*.ts"
-

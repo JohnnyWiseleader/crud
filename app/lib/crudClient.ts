@@ -5,9 +5,8 @@ import { Connection, PublicKey } from "@solana/web3.js";
 import type { WalletContextState } from "@solana/wallet-adapter-react";
 
 import idl from "../idl/crud_app.json";
-import { ACCOUNT_SIZES } from "./accountSizes";
 
-function getProgramId(): PublicKey {
+export function getProgramId(): PublicKey {
   const val = process.env.NEXT_PUBLIC_PROGRAM_ID;
   if (!val) throw new Error("Missing NEXT_PUBLIC_PROGRAM_ID");
   return new PublicKey(val);
@@ -18,7 +17,7 @@ export function createCrudProgram(wallet: WalletContextState, connection: Connec
   if (!wallet.signTransaction) throw new Error("Wallet cannot sign");
 
   const provider = new AnchorProvider(connection, wallet as any, {
-    preflightCommitment: "processed",
+    preflightCommitment: "confirmed",
   });
 
   const PROGRAM_ID = getProgramId();
@@ -33,14 +32,6 @@ export function createCrudProgram(wallet: WalletContextState, connection: Connec
       if (acct.type) return acct;
       const t = typesByName[acct.name];
       return t ? { ...acct, type: t } : acct;
-    });
-  }
-
-  // inject account.size
-  if (Array.isArray(normalizedIdl.accounts)) {
-    normalizedIdl.accounts = normalizedIdl.accounts.map((acct: any) => {
-      const size = ACCOUNT_SIZES[acct.name];
-      return size ? { ...acct, size } : acct;
     });
   }
 

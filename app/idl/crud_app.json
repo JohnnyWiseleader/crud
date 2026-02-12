@@ -1,5 +1,5 @@
 {
-  "address": "ADoEaEXd75hq2KxJWDKc4zpmujqYLqaGG3qThW3c6bS3",
+  "address": "4NcUz8q7fAChF5RiAvcWQ6cFaZduXLQYiaVX2Fq4i2EC",
   "metadata": {
     "name": "crud_app",
     "version": "0.1.0",
@@ -21,17 +21,55 @@
       ],
       "accounts": [
         {
+          "name": "id_counter",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  106,
+                  111,
+                  117,
+                  114,
+                  110,
+                  97,
+                  108,
+                  95,
+                  105,
+                  100
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "owner"
+              }
+            ]
+          }
+        },
+        {
           "name": "journal_entry",
           "writable": true,
           "pda": {
             "seeds": [
               {
-                "kind": "arg",
-                "path": "title"
+                "kind": "const",
+                "value": [
+                  101,
+                  110,
+                  116,
+                  114,
+                  121
+                ]
               },
               {
                 "kind": "account",
                 "path": "owner"
+              },
+              {
+                "kind": "account",
+                "path": "id_counter.next_id",
+                "account": "JournalId"
               }
             ]
           }
@@ -94,19 +132,7 @@
       "accounts": [
         {
           "name": "journal_entry",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "arg",
-                "path": "title"
-              },
-              {
-                "kind": "account",
-                "path": "owner"
-              }
-            ]
-          }
+          "writable": true
         },
         {
           "name": "index",
@@ -135,20 +161,12 @@
           "writable": true,
           "signer": true,
           "relations": [
-            "journal_entry"
+            "journal_entry",
+            "index"
           ]
-        },
-        {
-          "name": "system_program",
-          "address": "11111111111111111111111111111111"
         }
       ],
-      "args": [
-        {
-          "name": "_title",
-          "type": "string"
-        }
-      ]
+      "args": []
     },
     {
       "name": "update_journal_entry",
@@ -165,19 +183,7 @@
       "accounts": [
         {
           "name": "journal_entry",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "arg",
-                "path": "title"
-              },
-              {
-                "kind": "account",
-                "path": "owner"
-              }
-            ]
-          }
+          "writable": true
         },
         {
           "name": "owner",
@@ -188,10 +194,6 @@
         }
       ],
       "args": [
-        {
-          "name": "_title",
-          "type": "string"
-        },
         {
           "name": "message",
           "type": "string"
@@ -214,6 +216,19 @@
       ]
     },
     {
+      "name": "JournalId",
+      "discriminator": [
+        146,
+        237,
+        194,
+        162,
+        117,
+        54,
+        26,
+        22
+      ]
+    },
+    {
       "name": "JournalIndex",
       "discriminator": [
         117,
@@ -231,12 +246,17 @@
     {
       "code": 6000,
       "name": "InvalidOwner",
-      "msg": "Index owner mismatch"
+      "msg": "Owner mismatch"
     },
     {
       "code": 6001,
       "name": "IndexFull",
-      "msg": "Journal index is full (max 200)"
+      "msg": "Journal index is full (max 200 entries)"
+    },
+    {
+      "code": 6002,
+      "name": "IdOverflow",
+      "msg": "ID overflow"
     }
   ],
   "types": [
@@ -250,12 +270,32 @@
             "type": "pubkey"
           },
           {
+            "name": "id",
+            "type": "u64"
+          },
+          {
             "name": "title",
             "type": "string"
           },
           {
             "name": "message",
             "type": "string"
+          }
+        ]
+      }
+    },
+    {
+      "name": "JournalId",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "next_id",
+            "type": "u64"
           }
         ]
       }

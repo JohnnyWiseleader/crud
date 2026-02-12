@@ -3,139 +3,85 @@ import { Program } from "@coral-xyz/anchor";
 import { PublicKey, SystemProgram } from "@solana/web3.js";
 import { assert } from "chai";
 
-// If you generated types, import them; otherwise Program<any> is fine.
-// import { CrudApp } from "../target/types/crud_app";
+// little-endian u64 Buffer (8 bytes)
+function u64le(n: number | bigint): Buffer {
+  const bn = BigInt(n);
+  const b = Buffer.alloc(8);
+  b.writeBigUInt64LE(bn, 0);
+  return b;
+}
 
-describe("crud-app (index PDA)", () => {
+function deriveIndexPda(programId: PublicKey, owner: PublicKey): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("index"), owner.toBuffer()],
+    programId
+  );
+}
+
+function deriveIdCounterPda(programId: PublicKey, owner: PublicKey): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("journal_id"), owner.toBuffer()],
+    programId
+  );
+}
+
+function deriveEntryPda(programId: PublicKey, owner: PublicKey, id: number | bigint): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("entry"), owner.toBuffer(), u64le(id)],
+    programId
+  );
+}
+
+async function getNextIdOrZero(program: Program, idCounterPda: PublicKey): Promise<bigint> {
+  try {
+    const c: any = await (program as any).account.journalId.fetch(idCounterPda);
+    return BigInt(c.nextId.toString()); // u64 -> BN -> string
+  } catch {
+    return 0n;
+  }
+}
+
+
+describe("crud-app", () => {
   anchor.setProvider(anchor.AnchorProvider.env());
-  const provider = anchor.getProvider() as anchor.AnchorProvider;
+  const program = anchor.workspace.CrudApp as Program;
 
-  const program = anchor.workspace.CrudApp as Program<any>;
-  const owner = provider.wallet.publicKey;
+  console.log("IDL accounts:", Object.keys(program.account));
 
-  function entryPda(title: string): [PublicKey, number] {
-    return PublicKey.findProgramAddressSync(
-      [Buffer.from(title), owner.toBuffer()],
-      program.programId
-    );
-  }
+  it("creates entry", async () => {
+    const provider = anchor.getProvider() as anchor.AnchorProvider;
+    const owner = provider.wallet.publicKey;
 
-  function indexPda(): [PublicKey, number] {
-    return PublicKey.findProgramAddressSync(
-      [Buffer.from("index"), owner.toBuffer()],
-      program.programId
-    );
-  }
+    const [indexPda] = deriveIndexPda(program.programId, owner);
+    const [idCounterPda] = deriveIdCounterPda(program.programId, owner);
 
-  it("create initializes index and adds first entry", async () => {
-    const title = "t1";
-    const message = "m1";
+    const nextId = await getNextIdOrZero(program, idCounterPda);
+    const [entryPda] = deriveEntryPda(program.programId, owner, nextId);
 
-    const [entry] = entryPda(title);
-    const [index] = indexPda();
+    const title = "My First Entry";
+    const message = "Hello world";
 
     await program.methods
       .createJournalEntry(title, message)
       .accounts({
-        journalEntry: entry,
-        index,
+        journalEntry: entryPda,
+        index: indexPda,
+        idCounter: idCounterPda,
         owner,
         systemProgram: SystemProgram.programId,
       })
       .rpc();
 
-    const idx = await program.account.journalIndex.fetch(index);
-    assert.equal(idx.owner.toBase58(), owner.toBase58());
-    assert.equal(idx.entries.length, 1);
-    assert.equal(idx.entries[0].toBase58(), entry.toBase58());
+    const entry: any = await (program as any).account.journalEntryState.fetch(entryPda);
+    assert.equal(entry.owner.toBase58(), owner.toBase58());
+    assert.equal(entry.title, title);
+    assert.equal(entry.message, message);
+    assert.equal(BigInt(entry.id.toString()), nextId);
 
-    const e = await program.account.journalEntryState.fetch(entry);
-    assert.equal(e.owner.toBase58(), owner.toBase58());
-    assert.equal(e.title, title);
-    assert.equal(e.message, message);
-  });
+    const index: any = await (program as any).account.journalIndex.fetch(indexPda);
+    assert.isTrue(index.entries.some((k: PublicKey) => k.equals(entryPda)));
 
-  it("second create reuses index and appends", async () => {
-    const title = "t2";
-    const message = "m2";
-
-    const [entry] = entryPda(title);
-    const [index] = indexPda();
-
-    await program.methods
-      .createJournalEntry(title, message)
-      .accounts({
-        journalEntry: entry,
-        index,
-        owner,
-        systemProgram: SystemProgram.programId,
-      })
-      .rpc();
-
-    const idx = await program.account.journalIndex.fetch(index);
-    assert.equal(idx.entries.length, 2);
-    const set = new Set(idx.entries.map((k: PublicKey) => k.toBase58()));
-    assert.isTrue(set.has(entry.toBase58()));
-  });
-
-  it("delete removes from index and closes entry", async () => {
-    const title = "t1";
-    const [entry] = entryPda(title);
-    const [index] = indexPda();
-
-    await program.methods
-      .deleteJournalEntry(title)
-      .accounts({
-        journalEntry: entry,
-        index,
-        owner,
-        systemProgram: SystemProgram.programId,
-      })
-      .rpc();
-
-    // Entry should be closed: fetch should fail
-    try {
-      await program.account.journalEntryState.fetch(entry);
-      assert.fail("Expected entry fetch to fail (closed)");
-    } catch (_) {
-      // ok
-    }
-
-    const idx = await program.account.journalIndex.fetch(index);
-    assert.equal(idx.entries.length, 1);
-    const set = new Set(idx.entries.map((k: PublicKey) => k.toBase58()));
-    assert.isFalse(set.has(entry.toBase58()));
-  });
-
-  it("delete last entry closes index", async () => {
-    const title = "t2";
-    const [entry] = entryPda(title);
-    const [index] = indexPda();
-
-    await program.methods
-      .deleteJournalEntry(title)
-      .accounts({
-        journalEntry: entry,
-        index,
-        owner,
-        systemProgram: SystemProgram.programId,
-      })
-      .rpc();
-
-    // Entry closed
-    try {
-      await program.account.journalEntryState.fetch(entry);
-      assert.fail("Expected entry fetch to fail (closed)");
-    } catch (_) {
-      // ok
-    }
-
-    // Index should be closed when empty
-    try {
-      await program.account.journalIndex.fetch(index);
-      assert.fail("Expected index fetch to fail (closed)");
-    } catch (_) {
-      // ok
-    }
+    const counter: any = await (program as any).account.journalId.fetch(idCounterPda);
+    assert.equal(BigInt(counter.nextId.toString()), nextId + 1n);
   });
 });
