@@ -2,11 +2,14 @@ import { PublicKey, SystemProgram } from "@solana/web3.js";
 import type { Program } from "@coral-xyz/anchor";
 
 // u64 LE for PDA seed
-export function u64le(n: number | bigint): Buffer {
-  const bn = BigInt(n);
-  const b = Buffer.alloc(8);
-  b.writeBigUInt64LE(bn, 0);
-  return b;
+export function u64le(n: number | bigint): Uint8Array {
+  let x = BigInt(n);
+  const out = new Uint8Array(8);
+  for (let i = 0; i < 8; i++) {
+    out[i] = Number(x & BigInt(0xff));
+    x >>= BigInt(8);
+  }
+  return out;
 }
 
 export function deriveIndexPda(programId: PublicKey, owner: PublicKey): [PublicKey, number] {
@@ -18,7 +21,10 @@ export function deriveJournalIdPda(programId: PublicKey, owner: PublicKey): [Pub
 }
 
 export function deriveEntryPda(programId: PublicKey, owner: PublicKey, id: number | bigint): [PublicKey, number] {
-  return PublicKey.findProgramAddressSync([Buffer.from("entry"), owner.toBuffer(), u64le(id)], programId);
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("entry"), owner.toBuffer(), u64le(id)],
+    programId
+  );
 }
 
 export async function getNextIdOrZero(program: Program, journalIdPda: PublicKey): Promise<bigint> {

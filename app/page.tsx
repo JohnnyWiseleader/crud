@@ -71,10 +71,10 @@ export default function Home() {
             Solana + Anchor (wallet-adapter)
           </p>
           <h1 className="text-3xl font-semibold tracking-tight text-foreground">
-            CRUD dApp (devnet)
+            CRUD dApp (Pro)
           </h1>
           <p className="max-w-3xl text-base leading-relaxed text-muted">
-            Wallet-adapter frontend so Anchor .rpc() works reliably with Phantom.
+            A Create Read Update Delete dApp that works reliably with Phantom.
           </p>
         </header>
 

@@ -121,7 +121,6 @@ export default function CrudApp() {
 
   const [entries, setEntries] = useState<EntryRow[]>([]);
   const [selectedPdaStr, setSelectedPdaStr] = useState<string>("");
-  const [selectedEntry, setSelectedEntry] = useState<EntryRow | null>(null);
   const [title, setTitle] = useState("");
   const [message, setMessage] = useState("");
   const [txStatus, setTxStatus] = useState<string>("idle");
@@ -194,44 +193,45 @@ export default function CrudApp() {
     }
   }
 
-  async function handleUpdate() {
-    setTxStatus("sending-update");
-    try {
-      if (!program || !owner) throw new Error("Wallet/program not ready");
-      if (!selectedEntry) throw new Error("No entry selected");
+async function handleUpdate() {
+  setTxStatus("sending-update");
+  try {
+    if (!program || !owner) throw new Error("Wallet/program not ready");
+    if (!selectedPdaStr) throw new Error("No entry selected");
 
-      const pdaStr = selectedEntry.pda.toBase58();
+    const entryPda = new PublicKey(selectedPdaStr);
 
-      await updateEntryByKey(program, owner, selectedEntry.pda, message);
+    await updateEntryByKey(program, owner, entryPda, message);
 
-      setTxStatus("update-success");
-      await refresh();
+    setTxStatus("update-success");
+    await refresh();
 
-      setSelectedPdaStr(pdaStr);
-    } catch (err: any) {
-      if (isUserRejected(err)) {
-        setTxStatus("cancelled");
-        return;
-      }
-      console.error(err);
-      setTxStatus("update-failed: " + (err?.message ?? String(err)));
+    // keep selection
+    setSelectedPdaStr(entryPda.toBase58());
+  } catch (err: any) {
+    if (isUserRejected(err)) {
+      setTxStatus("cancelled");
+      return;
     }
+    console.error(err);
+    setTxStatus("update-failed: " + (err?.message ?? String(err)));
   }
+}
 
 async function handleDelete() {
   setTxStatus("sending-delete");
   try {
     if (!program || !owner) throw new Error("Wallet/program not ready");
-    if (!selectedEntry) throw new Error("No entry selected");
+    if (!selectedPdaStr) throw new Error("No entry selected");
 
-    await deleteEntryByKey(program, owner, selectedEntry.pda);
+    const entryPda = new PublicKey(selectedPdaStr);
+
+    await deleteEntryByKey(program, owner, entryPda);
 
     setTxStatus("delete-success");
     await refresh();
 
-    // clear selection since the entry is now closed
-    setSelectedEntry(null);
-    setSelectedPdaStr("");
+    setSelectedPdaStr(""); // clear selection
   } catch (err: any) {
     if (isUserRejected(err)) {
       setTxStatus("cancelled");
@@ -241,6 +241,7 @@ async function handleDelete() {
     setTxStatus("delete-failed: " + (err?.message ?? String(err)));
   }
 }
+
 
   return (
     <div className="space-y-4 rounded-lg border border-border-low bg-card p-4">
